@@ -1,0 +1,15 @@
+# OS junk
+.DS_Store
+
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Cloudflare/Wrangler local state + secrets
+**/.wrangler/
+**/.dev.vars
+
+# Local agent tooling / secrets
+**/.claude/settings.local.json
