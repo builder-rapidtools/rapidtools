@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RapidTools Validation API</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            color: #333;
+        }
+        h1 {
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 0.5rem;
+        }
+        h2 {
+            color: #34495e;
+            margin-top: 2rem;
+        }
+        ul {
+            margin: 0.5rem 0;
+        }
+        .contact {
+            background: #f8f9fa;
+            padding: 1rem;
+            border-left: 4px solid #3498db;
+            margin-top: 2rem;
+        }
+        footer {
+            text-align: center;
+            margin-top: 3rem;
+            padding-top: 2rem;
+            border-top: 1px solid #e0e0e0;
+            color: #666;
+            font-size: 0.9rem;
+        }
+        footer a {
+            color: #3498db;
+            text-decoration: none;
+        }
+        footer a:hover {
+            text-decoration: underline;
+        }
+        code {
+            background: #f4f4f4;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+    </style>
+</head>
+<body>
+    <h1>RapidTools Validation API</h1>
+
+    <h2>Service Overview</h2>
+    <p>API-first validation service for structured data formats with deterministic validation, idempotent operations, and edge-deployed performance.</p>
+
+    <h2>What it does</h2>
+    <ul>
+        <li>Validates CSV timeseries data (currently GA4 analytics format)</li>
+        <li>Provides deterministic, reproducible validation results</li>
+        <li>Supports idempotent request handling with 24-hour TTL</li>
+        <li>Returns structured findings with error codes and pointers</li>
+    </ul>
+
+    <h2>What it doesn't do</h2>
+    <ul>
+        <li>Does not store or retain validated data</li>
+        <li>Does not transform or modify input data</li>
+        <li>Does not provide data analytics or insights</li>
+        <li>Does not connect to external data sources</li>
+    </ul>
+
+    <h2>API Access</h2>
+    <p><strong>Base URL:</strong> <code>https://rapidtools-validation-api.jamesredwards89.workers.dev</code></p>
+    <p><strong>Authentication:</strong> API key via <code>x-api-key</code> header</p>
+    <p><strong>Idempotency:</strong> Optional <code>Idempotency-Key</code> header (24h TTL, 409 on mismatch)</p>
+
+    <h2>Supported Validation Types</h2>
+    <p><code>csv.timeseries.ga4.v1</code> - Google Analytics 4 CSV timeseries data</p>
+    <ul>
+        <li><strong>Required headers:</strong> date, sessions, users</li>
+        <li><strong>Optional headers:</strong> pageviews</li>
+    </ul>
+
+    <div class="contact">
+        <h2>Contact</h2>
+        <p>Email: <a href="mailto:validation@rapidtools.dev">validation@rapidtools.dev</a></p>
+    </div>
+
+    <footer>
+        <p>&copy; RapidTools &middot; Validation Service &middot; <a href="https://validation.rapidtools.dev/terms.html">Terms of Service</a> &middot; <a href="https://validation.rapidtools.dev/manifest.json">Manifest</a></p>
+    </footer>
+</body>
+</html>

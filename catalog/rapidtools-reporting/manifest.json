@@ -1,0 +1,330 @@
+{
+  "service": "RapidTools Reporting API",
+  "version": "1.0",
+  "schema_version": "1.0",
+  "last_updated": "2025-12-18",
+  "base_url": "https://reporting-api.rapidtools.dev",
+  "manifest_url": "https://reporting.rapidtools.dev/manifest.json",
+  "documentation_url": "https://github.com/builder-rapidtools/rapidtools-reporting",
+  "terms_url": "https://reporting.rapidtools.dev/terms.html",
+  "status": "limited_testing",
+  "description": "Automated weekly client reporting service that generates branded PDF reports from analytics data and delivers them via email.",
+  "category": ["analytics", "reporting", "automation"],
+  "provider": {
+    "name": "RapidTools",
+    "contact": "reports@rapidtools.dev",
+    "jurisdiction": "UK"
+  },
+  "security": {
+    "contact": "security@rapidtools.dev",
+    "disclosure_policy_url": "https://directory.rapidtools.dev/security",
+    "incident_response_url": "https://directory.rapidtools.dev/security#incidents",
+    "last_updated": "2025-12-18"
+  },
+  "capabilities": [
+    {
+      "id": "health_check",
+      "method": "GET",
+      "path": "/api/health",
+      "description": "Service health and availability check",
+      "idempotent": true,
+      "side_effects": []
+    },
+    {
+      "id": "create_client",
+      "method": "POST",
+      "path": "/api/client",
+      "description": "Register a new client for weekly reporting",
+      "idempotent": false,
+      "side_effects": ["storage"]
+    },
+    {
+      "id": "list_clients",
+      "method": "GET",
+      "path": "/api/clients",
+      "description": "Retrieve all clients for the agency",
+      "idempotent": true,
+      "side_effects": []
+    },
+    {
+      "id": "delete_client",
+      "method": "DELETE",
+      "path": "/api/client/{id}",
+      "description": "Delete a client and optionally cascade delete all associated data",
+      "idempotent": true,
+      "side_effects": ["storage"],
+      "parameters": {
+        "path": {
+          "id": "Client UUID"
+        },
+        "headers": {
+          "X-Cascade-Delete": "Optional header (default: not set). If 'true', deletes all R2 objects (CSVs, PDFs) and report metadata. Without this header, only deletes client KV entry (R2 objects orphaned)."
+        }
+      },
+      "notes": "Hostile Audit Phase 4: Added cascade delete to address 'no orphaned data' principle. Phase 4 Hardening: Uses header (not query param) for safety. Without X-Cascade-Delete: true, R2 objects remain orphaned. Client-scoped guardrails prevent agency-wide deletion. Idempotent: safe to call multiple times."
+    },
+    {
+      "id": "upload_ga4_csv",
+      "method": "POST",
+      "path": "/api/client/{id}/ga4-csv",
+      "description": "Upload GA4 analytics CSV data for a client",
+      "idempotent": true,
+      "rate_limiting": {
+        "enforced": true,
+        "limit": 20,
+        "window_seconds": 3600,
+        "scope": "per_client",
+        "headers": {
+          "X-RateLimit-Limit": "Maximum requests per window",
+          "X-RateLimit-Remaining": "Requests remaining in current window",
+          "X-RateLimit-Reset": "Unix timestamp when window resets"
+        }
+      },
+      "side_effects": ["storage"],
+      "notes": "Rate limited to 20 uploads per client per hour to prevent storage economic abuse (FRS-3). Returns X-RateLimit-* headers for agent observability."
+    },
+    {
+      "id": "preview_report",
+      "method": "POST",
+      "path": "/api/client/{id}/report/preview",
+      "description": "Generate and return report preview without sending",
+      "idempotent": true,
+      "side_effects": []
+    },
+    {
+      "id": "send_report",
+      "method": "POST",
+      "path": "/api/client/{id}/report/send",
+      "description": "Generate report and deliver via email",
+      "idempotent": false,
+      "idempotency": {
+        "supported": true,
+        "requires_header": "idempotency-key",
+        "scope": "per_agency_per_client",
+        "ttl_seconds": 86400,
+        "failure_mode": "fail_closed"
+      },
+      "retry_safety": {
+        "safe_with_idempotency_key": true,
+        "safe_without_idempotency_key": false,
+        "recommended_backoff": "exponential",
+        "max_retries": 3
+      },
+      "rate_limiting": {
+        "enforced": true,
+        "limit": 10,
+        "window_seconds": 3600,
+        "scope": "per_client",
+        "headers": {
+          "X-RateLimit-Limit": "Maximum requests per window",
+          "X-RateLimit-Remaining": "Requests remaining in current window",
+          "X-RateLimit-Reset": "Unix timestamp when window resets"
+        }
+      },
+      "side_effects": ["email", "storage"],
+      "notes": "NOT idempotent by default. Becomes idempotent when idempotency-key header is provided (accepts both lowercase and capitalized forms per HTTP spec). Without header, duplicate requests send duplicate emails. Rate limited to 10 requests per client per hour (FRS-1). FRS-2: Adds X-RateLimit-* headers for agent observability. Idempotency check failures return 503 IDEMPOTENCY_CHECK_FAILED (fail closed). Retry safe ONLY with idempotency-key header."
+    },
+    {
+      "id": "generate_signed_pdf_url",
+      "method": "POST",
+      "path": "/api/reports/{clientId}/{filename}/signed-url",
+      "description": "Generate time-limited signed URL for PDF download",
+      "idempotent": true,
+      "retry_safety": {
+        "safe_to_retry": true,
+        "reason": "Stateless token generation, no side effects"
+      },
+      "side_effects": [],
+      "authentication_required": true,
+      "parameters": {
+        "path": {
+          "clientId": "Client UUID",
+          "filename": "PDF filename (must end with .pdf)"
+        },
+        "query": {
+          "ttl": "Time-to-live in seconds (default: 900, max: 3600)"
+        }
+      },
+      "notes": "Returns signed URL with expiration timestamp. Token prevents unauthorized PDF access via URL enumeration. Requires active subscription. FRS-2: Always safe to retry (idempotent, stateless)."
+    },
+    {
+      "id": "download_pdf",
+      "method": "GET",
+      "path": "/reports/{agencyId}/{clientId}/{filename}",
+      "description": "Download PDF report with signed token",
+      "idempotent": true,
+      "side_effects": [],
+      "authentication_required": true,
+      "authentication_type": "signed_token",
+      "parameters": {
+        "path": {
+          "agencyId": "Agency UUID",
+          "clientId": "Client UUID",
+          "filename": "PDF filename"
+        },
+        "query": {
+          "token": "Signed HMAC-SHA256 token (required)"
+        }
+      },
+      "notes": "Requires signed token obtained from generate_signed_pdf_url endpoint. Tokens expire based on TTL (default 15 minutes). Stateless verification with no database lookups."
+    }
+  ],
+  "authentication": {
+    "type": "api_key",
+    "location": "header",
+    "header_name": "x-api-key",
+    "scope": "per_agency",
+    "pdf_downloads": {
+      "type": "signed_token",
+      "method": "HMAC-SHA256",
+      "location": "query_parameter",
+      "parameter_name": "token",
+      "ttl_default": 900,
+      "ttl_max": 3600,
+      "notes": "PDF downloads require time-limited signed tokens obtained via generate_signed_pdf_url endpoint. Tokens are stateless and verified using HMAC-SHA256 signature. No database lookups required."
+    }
+  },
+  "limits": {
+    "rate_limits": {
+      "global": {
+        "requests_per_minute": 60,
+        "burst": 10,
+        "enforced": false,
+        "notes": "General API rate limiting not implemented. Documented for future reference only."
+      },
+      "endpoint_specific": {
+        "agency_registration": {
+          "limit": 3,
+          "window_seconds": 3600,
+          "scope": "per_ip",
+          "enforced": true,
+          "error_code": "RATE_LIMIT_EXCEEDED",
+          "notes": "Registration endpoint limited to 3 attempts per IP per hour to prevent abuse."
+        },
+        "report_send": {
+          "limit": 10,
+          "window_seconds": 3600,
+          "scope": "per_client",
+          "enforced": true,
+          "error_code": "RATE_LIMIT_EXCEEDED",
+          "notes": "Report generation limited to 10 requests per client per hour to prevent economic abuse via email spam and PDF generation. Implemented in FRS-1 (2025-12-19)."
+        },
+        "csv_upload": {
+          "limit": 20,
+          "window_seconds": 3600,
+          "scope": "per_client",
+          "enforced": true,
+          "error_code": "RATE_LIMIT_EXCEEDED",
+          "notes": "CSV upload limited to 20 requests per client per hour to prevent storage economic abuse (write amplification). Implemented in FRS-3 (2025-12-19)."
+        }
+      }
+    },
+    "payload_limits": {
+      "max_bytes": 5242880,
+      "max_rows": 100000,
+      "enforced": true,
+      "notes": "CSV uploads limited to 5MB and 100,000 rows. Enforced as of Hostile Audit Phase 1."
+    },
+    "plan_limits": {
+      "starter": {
+        "max_clients": 5,
+        "enforced": true
+      },
+      "pro": {
+        "max_clients": null,
+        "enforced": false,
+        "notes": "Unlimited clients"
+      }
+    }
+  },
+  "idempotency": {
+    "supported": "optional",
+    "header_name": "idempotency-key",
+    "ttl_seconds": 86400,
+    "scope": "per_agency_per_client",
+    "failure_mode": "fail_closed",
+    "notes": "Optional idempotency support via idempotency-key header (accepts both lowercase and capitalized forms per HTTP spec). Currently supported for send_report endpoint only. When provided, prevents duplicate email sends for the same agency+client+key combination. Keys expire after 24 hours. FRS-1 (2025-12-19): Fixed header case sensitivity to accept both idempotency-key and Idempotency-Key. FRS-2 (2025-12-19): Idempotency check failures return 503 IDEMPOTENCY_CHECK_FAILED (fail closed). If storage is unavailable, request is rejected to prevent duplicates. After successful operation, storage failures are logged but do not fail the request."
+  },
+  "errors": {
+    "format": "application/json",
+    "structure": {
+      "success": {
+        "ok": true,
+        "data": "object"
+      },
+      "error": {
+        "ok": false,
+        "error": {
+          "code": "string",
+          "message": "string"
+        }
+      }
+    },
+    "codes": [
+      "UNAUTHORIZED",
+      "SUBSCRIPTION_INACTIVE",
+      "TRIAL_EXPIRED",
+      "FORBIDDEN",
+      "MISSING_REQUIRED_FIELDS",
+      "INVALID_EMAIL",
+      "CLIENT_NOT_FOUND",
+      "CLIENT_LIMIT_EXCEEDED",
+      "MISSING_CLIENT_ID",
+      "INVALID_CSV",
+      "CSV_TOO_LARGE",
+      "CSV_TOO_MANY_ROWS",
+      "NO_DATA_UPLOADED",
+      "DATA_NOT_FOUND",
+      "REPORT_SEND_FAILED",
+      "AGENCY_NOT_FOUND",
+      "RATE_LIMIT_EXCEEDED",
+      "WEBHOOK_ERROR",
+      "INTERNAL_ERROR",
+      "NOT_FOUND",
+      "IDEMPOTENCY_KEY_REUSE_MISMATCH",
+      "IDEMPOTENCY_CHECK_FAILED",
+      "PDF_TOKEN_REQUIRED",
+      "PDF_TOKEN_INVALID",
+      "PDF_TOKEN_EXPIRED",
+      "PDF_TOKEN_MISMATCH",
+      "PDF_NOT_FOUND",
+      "INVALID_FILE_TYPE",
+      "INVALID_FILENAME",
+      "INVALID_TTL"
+    ],
+    "retryable_codes": []
+  },
+  "stability": {
+    "level": "limited_testing",
+    "breaking_change_policy": "versioned_manifest",
+    "notes": "Service in limited testing with real customers. Not yet considered stable. Breaking changes may occur with 30-day notice."
+  },
+  "versioning": {
+    "api": "v1",
+    "manifest_schema": "1.0",
+    "deprecation_notice_days": 90
+  },
+  "non_goals": [
+    "Real-time analytics or live dashboards",
+    "Data transformation or calculation beyond summarization",
+    "Direct integration with GA4 API (requires CSV export)",
+    "Multi-format report output (PDF only)",
+    "Custom branding beyond logo upload",
+    "Report scheduling beyond weekly cadence"
+  ],
+  "pricing": {
+    "model": "subscription",
+    "currency": "GBP",
+    "billing_period": "monthly"
+  },
+  "data_handling": {
+    "storage": ["Cloudflare KV", "Cloudflare R2"],
+    "retention": "CSV data and generated PDFs retained for active subscriptions",
+    "training_use": false
+  },
+  "runtime": {
+    "platform": "cloudflare_workers",
+    "language": "typescript",
+    "framework": "hono"
+  }
+}

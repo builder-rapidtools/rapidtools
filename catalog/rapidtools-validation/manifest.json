@@ -1,0 +1,148 @@
+{
+  "service": "RapidTools Validation API",
+  "version": "1.0",
+  "schema_version": "1.0",
+  "last_updated": "2025-12-17",
+  "base_url": "https://validation-api.rapidtools.dev",
+  "manifest_url": "https://validation.rapidtools.dev/manifest.json",
+  "documentation_url": "https://github.com/builder-rapidtools/rapidtools-validation",
+  "terms_url": "https://validation.rapidtools.dev/terms.html",
+  "status": "limited_testing",
+  "description": "API-first validation service for structured data formats with deterministic validation, idempotent operations, and edge-deployed performance.",
+  "category": ["validation", "data-quality", "api"],
+  "provider": {
+    "name": "RapidTools",
+    "contact": "validation@rapidtools.dev",
+    "jurisdiction": "UK"
+  },
+  "capabilities": [
+    {
+      "id": "health_check",
+      "method": "GET",
+      "path": "/health",
+      "description": "Service health and availability check",
+      "idempotent": true,
+      "side_effects": []
+    },
+    {
+      "id": "list_types",
+      "method": "GET",
+      "path": "/api/types",
+      "description": "List all supported validation types",
+      "idempotent": true,
+      "side_effects": []
+    },
+    {
+      "id": "validate",
+      "method": "POST",
+      "path": "/api/validate",
+      "description": "Validate structured data against specified type schema",
+      "idempotent": true,
+      "side_effects": []
+    }
+  ],
+  "authentication": {
+    "type": "api_key",
+    "location": "header",
+    "header_name": "x-api-key",
+    "scope": "per_key"
+  },
+  "limits": {
+    "rate_limits": {
+      "requests_per_minute": 120,
+      "burst": 20,
+      "enforced": false,
+      "notes": "Rate limiting not currently enforced. Consider Cloudflare-level rate limiting for production."
+    },
+    "payload_limits": {
+      "max_bytes": 5242880,
+      "max_rows": 100000,
+      "enforced": true,
+      "notes": "Payload limits enforced via validation options. maxRows option defaults to 100,000."
+    }
+  },
+  "idempotency": {
+    "supported": true,
+    "header": "Idempotency-Key",
+    "ttl_seconds": 86400,
+    "conflict_status": 409,
+    "conflict_code": "IDEMPOTENCY_KEY_REUSE_MISMATCH",
+    "fingerprint_algorithm": "sha256(type + sha256(content) + stableStringify(options) + stableStringify(context))"
+  },
+  "errors": {
+    "format": "application/json",
+    "structure": {
+      "success": {
+        "ok": true,
+        "data": "object"
+      },
+      "error": {
+        "ok": false,
+        "error": {
+          "code": "string",
+          "message": "string"
+        },
+        "findings": ["array (validation errors only)"]
+      }
+    },
+    "codes": [
+      "UNAUTHORIZED",
+      "MISSING_TYPE",
+      "MISSING_CONTENT",
+      "UNSUPPORTED_TYPE",
+      "VALIDATION_FAILED",
+      "INVALID_CONTENT_ENCODING",
+      "IDEMPOTENCY_KEY_REUSE_MISMATCH",
+      "NOT_FOUND",
+      "INTERNAL_ERROR"
+    ],
+    "validation_finding_codes": [
+      "EMPTY_CSV",
+      "MISSING_REQUIRED_HEADERS",
+      "INVALID_ROW_FORMAT",
+      "INVALID_DATE_FORMAT",
+      "DUPLICATE_DATE",
+      "INVALID_SESSIONS_VALUE",
+      "INVALID_USERS_VALUE",
+      "INVALID_PAGEVIEWS_VALUE",
+      "NOT_SORTED_BY_DATE",
+      "MAX_ROWS_EXCEEDED",
+      "MISSING_OPTIONAL_HEADER"
+    ],
+    "retryable_codes": [
+      "INTERNAL_ERROR"
+    ]
+  },
+  "stability": {
+    "level": "stable",
+    "breaking_change_policy": "versioned_manifest"
+  },
+  "versioning": {
+    "api": "v1",
+    "manifest_schema": "1.0",
+    "type_versioning": "csv.timeseries.ga4.v1",
+    "deprecation_notice_days": 90
+  },
+  "non_goals": [
+    "Data storage or persistence beyond idempotency cache",
+    "Data transformation or correction (validation only)",
+    "Direct file upload (API receives text/base64 payloads)",
+    "Real-time streaming validation",
+    "Custom validation rule creation",
+    "Data analytics or aggregation"
+  ],
+  "pricing": {
+    "model": "usage-based",
+    "currency": "GBP"
+  },
+  "data_handling": {
+    "storage": ["Cloudflare KV"],
+    "retention": "Idempotency cache only (24h TTL); no data retention",
+    "training_use": false
+  },
+  "runtime": {
+    "platform": "cloudflare_workers",
+    "language": "typescript",
+    "framework": "itty-router"
+  }
+}
