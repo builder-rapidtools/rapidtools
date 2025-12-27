@@ -9,6 +9,7 @@ API-first micro-services for data validation, normalization, and reporting.
 | **Validation API** | CSV validation | `https://validation-api.rapidtools.dev` |
 | **Normalize API** | Data normalization | `https://normalize-api.rapidtools.dev` |
 | **Reporting API** | PDF report generation + email delivery | `https://reporting-api.rapidtools.dev` |
+| **EEA** | Economic event attestation | `https://eea-tool.jamesredwards89.workers.dev` |
 
 ## Design
 
@@ -24,6 +25,7 @@ products/
 ├── validation-tool/   # CSV validation service
 ├── normalize-tool/    # Data normalization service
 ├── reporting-tool/    # PDF reports + email delivery
+├── eea-tool/          # Economic event attestation
 └── monitoring-worker/ # Uptime monitoring
 ```
 
