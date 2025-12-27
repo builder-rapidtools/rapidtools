@@ -1,0 +1,71 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://rapidtools.dev/schemas/eea.v1.json",
+  "title": "Economic Event Attestation Schema v1",
+  "description": "Schema for economic events submitted for attestation",
+  "type": "object",
+  "required": [
+    "event_type",
+    "occurred_at",
+    "amount",
+    "currency",
+    "source_system",
+    "references"
+  ],
+  "properties": {
+    "event_type": {
+      "type": "string",
+      "enum": [
+        "payment",
+        "refund",
+        "invoice_issued",
+        "transfer",
+        "credit_spend",
+        "payout",
+        "adjustment"
+      ],
+      "description": "Type of economic event"
+    },
+    "occurred_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "ISO-8601 timestamp when the event occurred"
+    },
+    "amount": {
+      "type": "string",
+      "pattern": "^-?[0-9]+(\\.[0-9]+)?$",
+      "description": "Monetary amount as string (e.g., '100.00', '-50.25')"
+    },
+    "currency": {
+      "type": "string",
+      "pattern": "^[A-Z]{3}$",
+      "description": "3-letter uppercase currency code (e.g., 'USD', 'GBP')"
+    },
+    "source_system": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the originating system"
+    },
+    "references": {
+      "type": "object",
+      "description": "Freeform object containing reference IDs",
+      "additionalProperties": true
+    },
+    "payload": {
+      "type": "object",
+      "description": "Optional raw provider payload",
+      "additionalProperties": true
+    },
+    "evidence": {
+      "type": "object",
+      "description": "Optional links or IDs for evidence",
+      "additionalProperties": true
+    },
+    "meta": {
+      "type": "object",
+      "description": "Optional caller metadata",
+      "additionalProperties": true
+    }
+  },
+  "additionalProperties": false
+}

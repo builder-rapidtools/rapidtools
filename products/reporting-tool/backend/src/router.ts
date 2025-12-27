@@ -4,6 +4,7 @@
  */
 
 import { Hono } from 'hono';
+import { cors } from 'hono/cors';
 import { Env } from './types';
 import { handleHealthCheck } from './handlers/health';
 import { handleCreateClient, handleListClients, handleDeleteClient } from './handlers/clients';
@@ -14,6 +15,19 @@ import { handleCreateCheckoutSession, handleStripeWebhookEndpoint } from './hand
 
 export function createRouter() {
   const app = new Hono<{ Bindings: Env }>();
+
+  // CORS - allow frontend domains
+  app.use('/*', cors({
+    origin: [
+      'https://rapidtools-frontend.pages.dev',
+      'https://app.rapidtools.dev',
+      'http://localhost:3000',
+      'http://localhost:8080',
+    ],
+    allowMethods: ['GET', 'POST', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'x-api-key'],
+    credentials: true,
+  }));
 
   // Health check
   app.get('/api/health', handleHealthCheck);

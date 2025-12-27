@@ -25,9 +25,8 @@ function getBackendUrl() {
     return 'http://localhost:8787';
   }
 
-  // Production: Assume backend is deployed at api subdomain
-  // e.g., frontend at rapidtools.pages.dev, backend at api.rapidtools.com
-  return 'https://api.rapidtools.com';
+  // Production: Backend deployed at reporting-api.rapidtools.dev
+  return 'https://reporting-api.rapidtools.dev';
 }
 
 /**
@@ -89,7 +88,7 @@ async function handleRegister() {
   registerBtn.textContent = 'Registering...';
 
   try {
-    const response = await postJSON('/api/agency/register', { name, email });
+    const response = await postJSON('/api/agency/register', { name, billingEmail: email });
 
     if (!response.success) {
       throw new Error(response.error || 'Registration failed');

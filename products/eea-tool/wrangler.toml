@@ -1,0 +1,14 @@
+name = "eea-tool"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# KV namespace for attestation storage and idempotency
+[[kv_namespaces]]
+binding = "EEA_KV"
+id = "8a12b5ff40604b3195865c105f9d952a"
+
+# For local development, use .dev.vars file:
+# EEA_API_KEY=your-dev-api-key
+
+# Production secrets (set via wrangler secret put):
+# - EEA_API_KEY
