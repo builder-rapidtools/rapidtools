@@ -13,3 +13,11 @@ yarn-error.log*
 
 # Local agent tooling / secrets
 **/.claude/settings.local.json
+
+# Security-sensitive documents (NEVER commit)
+SECURITY_ROTATION_*.md
+**/SECURITY_*.md
+**/credentials*.json
+**/secrets*.json
+**/*.pem
+**/*.key
