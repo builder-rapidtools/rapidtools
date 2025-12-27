@@ -3,6 +3,7 @@
 Deterministic attestation microservice for economic events. Creates immutable, cryptographically verifiable records of financial events.
 
 **Version:** 1.1.0
+**Endpoint:** `https://eea-api.rapidtools.dev`
 
 ## What It Does
 
