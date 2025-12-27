@@ -6,14 +6,17 @@
 import { Env } from '../env';
 import { errorResponse, ErrorCodes } from '../errors';
 import { getAttestationById } from '../storage';
+import { createLogContext } from '../logging';
 
 export async function handleFetch(
   attestationId: string,
   env: Env,
-  requestId: string
+  requestId: string,
+  logCtx: ReturnType<typeof createLogContext>
 ): Promise<Response> {
   // Validate ID format (should start with eea_)
   if (!attestationId.startsWith('eea_')) {
+    logCtx.log(404, ErrorCodes.NOT_FOUND);
     return errorResponse(
       ErrorCodes.NOT_FOUND,
       'Attestation not found',
@@ -26,6 +29,7 @@ export async function handleFetch(
   const record = await getAttestationById(env.EEA_KV, attestationId);
 
   if (!record) {
+    logCtx.log(404, ErrorCodes.NOT_FOUND);
     return errorResponse(
       ErrorCodes.NOT_FOUND,
       'Attestation not found',
@@ -34,6 +38,9 @@ export async function handleFetch(
     );
   }
 
+  logCtx.setEventHashPrefix(record.event_hash);
+  logCtx.log(200);
+
   return new Response(
     JSON.stringify({
       ok: true,
@@ -41,7 +48,10 @@ export async function handleFetch(
     }),
     {
       status: 200,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-request-id': requestId,
+      },
     }
   );
 }

@@ -4,15 +4,18 @@
  * Key patterns:
  * - attestation:{attestation_id} → full attestation record JSON
  * - hash:{event_hash} → attestation_id (idempotency mapping)
+ *
+ * Both keys use TTL based on EEA_RETENTION_DAYS.
  */
 
-import { Env } from './env';
+import { Env, CONFIG } from './env';
 
 export interface AttestationRecord {
   attestation_id: string;
   schema_version: string;
   attested_at: string;
   event_hash: string;
+  attestation_sig: string;
   canonical_event: Record<string, unknown>;
 }
 
@@ -20,22 +23,36 @@ const KEY_PREFIX_ATTESTATION = 'attestation:';
 const KEY_PREFIX_HASH = 'hash:';
 
 /**
- * Store a new attestation record
+ * Calculate TTL in seconds from retention days
+ */
+function getRetentionTtl(env: Env): number {
+  const days = env.EEA_RETENTION_DAYS
+    ? parseInt(env.EEA_RETENTION_DAYS, 10)
+    : CONFIG.DEFAULT_RETENTION_DAYS;
+  return days * 24 * 60 * 60; // Convert days to seconds
+}
+
+/**
+ * Store a new attestation record with TTL
  */
 export async function storeAttestation(
-  kv: KVNamespace,
+  env: Env,
   record: AttestationRecord
 ): Promise<void> {
-  // Store the full record
-  await kv.put(
+  const ttl = getRetentionTtl(env);
+
+  // Store the full record with TTL
+  await env.EEA_KV.put(
     `${KEY_PREFIX_ATTESTATION}${record.attestation_id}`,
-    JSON.stringify(record)
+    JSON.stringify(record),
+    { expirationTtl: ttl }
   );
 
-  // Store hash → id mapping for idempotency
-  await kv.put(
+  // Store hash → id mapping for idempotency with TTL
+  await env.EEA_KV.put(
     `${KEY_PREFIX_HASH}${record.event_hash}`,
-    record.attestation_id
+    record.attestation_id,
+    { expirationTtl: ttl }
   );
 }
 

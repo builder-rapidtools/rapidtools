@@ -3,19 +3,20 @@
  * Creates a new attestation for an economic event
  */
 
-import { Env } from '../env';
+import { Env, CONFIG } from '../env';
 import { errorResponse, ErrorCodes } from '../errors';
 import { canonicalizeEvent, canonicalizeJson } from '../canonicalize';
 import { sha256 } from '../hash';
 import { generateAttestationId } from '../id';
+import { signAttestation } from '../signing';
 import {
   storeAttestation,
   getAttestationById,
   getAttestationIdByHash,
   AttestationRecord,
 } from '../storage';
-
-const SCHEMA_VERSION = 'eea.v1';
+import { ApiKeyEntry } from '../auth';
+import { createLogContext } from '../logging';
 
 // Valid event types
 const VALID_EVENT_TYPES = new Set([
@@ -42,12 +43,10 @@ const REQUIRED_FIELDS = [
  * Validate ISO-8601 timestamp format
  */
 function isValidIso8601(value: string): boolean {
-  // Basic ISO-8601 validation
   const iso8601Regex = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/;
   if (!iso8601Regex.test(value)) {
     return false;
   }
-  // Also check it parses to a valid date
   const date = new Date(value);
   return !isNaN(date.getTime());
 }
@@ -64,6 +63,24 @@ function isValidCurrency(value: string): boolean {
  */
 function isValidAmount(value: string): boolean {
   return /^-?[0-9]+(\.[0-9]+)?$/.test(value);
+}
+
+/**
+ * Check if payload field exceeds size limit
+ */
+function checkPayloadSize(event: Record<string, unknown>, requestId: string): Response | null {
+  if (event.payload && typeof event.payload === 'object') {
+    const payloadStr = JSON.stringify(event.payload);
+    if (payloadStr.length > CONFIG.MAX_PAYLOAD_BYTES) {
+      return errorResponse(
+        ErrorCodes.PAYLOAD_TOO_LARGE,
+        `payload field exceeds ${CONFIG.MAX_PAYLOAD_BYTES} bytes limit`,
+        413,
+        requestId
+      );
+    }
+  }
+  return null;
 }
 
 /**
@@ -159,19 +176,49 @@ function validateEvent(
     }
   }
 
+  // Check payload size limit
+  const payloadSizeError = checkPayloadSize(event, requestId);
+  if (payloadSizeError) return payloadSizeError;
+
   return null; // validation passed
 }
 
 export async function handleAttest(
   request: Request,
   env: Env,
-  requestId: string
+  requestId: string,
+  keyEntry: ApiKeyEntry,
+  logCtx: ReturnType<typeof createLogContext>
 ): Promise<Response> {
+  // Check request body size
+  const contentLength = request.headers.get('content-length');
+  if (contentLength && parseInt(contentLength, 10) > CONFIG.MAX_BODY_BYTES) {
+    logCtx.log(413, ErrorCodes.PAYLOAD_TOO_LARGE);
+    return errorResponse(
+      ErrorCodes.PAYLOAD_TOO_LARGE,
+      `Request body exceeds ${CONFIG.MAX_BODY_BYTES} bytes limit`,
+      413,
+      requestId
+    );
+  }
+
   // Parse JSON body
   let body: unknown;
+  let bodyText: string;
   try {
-    body = await request.json();
+    bodyText = await request.text();
+    if (bodyText.length > CONFIG.MAX_BODY_BYTES) {
+      logCtx.log(413, ErrorCodes.PAYLOAD_TOO_LARGE);
+      return errorResponse(
+        ErrorCodes.PAYLOAD_TOO_LARGE,
+        `Request body exceeds ${CONFIG.MAX_BODY_BYTES} bytes limit`,
+        413,
+        requestId
+      );
+    }
+    body = JSON.parse(bodyText);
   } catch {
+    logCtx.log(400, ErrorCodes.INVALID_JSON);
     return errorResponse(
       ErrorCodes.INVALID_JSON,
       'Request body must be valid JSON',
@@ -182,6 +229,7 @@ export async function handleAttest(
 
   // Must be an object
   if (typeof body !== 'object' || body === null || Array.isArray(body)) {
+    logCtx.log(400, ErrorCodes.INVALID_JSON);
     return errorResponse(
       ErrorCodes.INVALID_JSON,
       'Request body must be a JSON object',
@@ -195,6 +243,7 @@ export async function handleAttest(
   // Validate against schema
   const validationError = validateEvent(event, requestId);
   if (validationError) {
+    logCtx.log(400, ErrorCodes.SCHEMA_VALIDATION_FAILED);
     return validationError;
   }
 
@@ -204,24 +253,30 @@ export async function handleAttest(
 
   // Compute hash
   const eventHash = await sha256(canonicalJson);
+  logCtx.setEventHashPrefix(eventHash);
 
   // Check for existing attestation (idempotency)
   const existingId = await getAttestationIdByHash(env.EEA_KV, eventHash);
   if (existingId) {
     const existingRecord = await getAttestationById(env.EEA_KV, existingId);
     if (existingRecord) {
+      logCtx.log(200);
       return new Response(
         JSON.stringify({
           ok: true,
           idempotent: true,
           attestation_id: existingRecord.attestation_id,
           event_hash: existingRecord.event_hash,
+          attestation_sig: existingRecord.attestation_sig,
           schema_version: existingRecord.schema_version,
           attested_at: existingRecord.attested_at,
         }),
         {
           status: 200,
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'x-request-id': requestId,
+          },
         }
       );
     }
@@ -231,28 +286,42 @@ export async function handleAttest(
   const attestationId = generateAttestationId();
   const attestedAt = new Date().toISOString();
 
+  // Compute tamper-evident signature
+  const attestationSig = await signAttestation(
+    env.EEA_SIGNING_KEY,
+    attestationId,
+    eventHash,
+    attestedAt
+  );
+
   const record: AttestationRecord = {
     attestation_id: attestationId,
-    schema_version: SCHEMA_VERSION,
+    schema_version: CONFIG.SCHEMA_VERSION,
     attested_at: attestedAt,
     event_hash: eventHash,
+    attestation_sig: attestationSig,
     canonical_event: canonicalEvent,
   };
 
-  // Store in KV
-  await storeAttestation(env.EEA_KV, record);
+  // Store in KV with TTL
+  await storeAttestation(env, record);
 
+  logCtx.log(201);
   return new Response(
     JSON.stringify({
       ok: true,
       attestation_id: attestationId,
       event_hash: eventHash,
-      schema_version: SCHEMA_VERSION,
+      attestation_sig: attestationSig,
+      schema_version: CONFIG.SCHEMA_VERSION,
       attested_at: attestedAt,
     }),
     {
       status: 201,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-request-id': requestId,
+      },
     }
   );
 }

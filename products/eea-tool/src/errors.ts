@@ -37,19 +37,35 @@ export function errorResponse(
     JSON.stringify(createErrorResponse(code, message, requestId)),
     {
       status,
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'x-request-id': requestId,
+      },
     }
   );
 }
 
 // Standard error codes
 export const ErrorCodes = {
+  // Auth errors
+  UNAUTHORIZED: 'UNAUTHORIZED',
+
+  // Validation errors
   INVALID_JSON: 'INVALID_JSON',
   SCHEMA_VALIDATION_FAILED: 'SCHEMA_VALIDATION_FAILED',
   INVALID_TIMESTAMP: 'INVALID_TIMESTAMP',
   MISSING_REQUIRED_FIELD: 'MISSING_REQUIRED_FIELD',
   INVALID_FIELD_TYPE: 'INVALID_FIELD_TYPE',
-  UNAUTHORIZED: 'UNAUTHORIZED',
+
+  // Size limit errors
+  PAYLOAD_TOO_LARGE: 'PAYLOAD_TOO_LARGE',
+
+  // Rate limiting
+  RATE_LIMITED: 'RATE_LIMITED',
+
+  // Not found
   NOT_FOUND: 'NOT_FOUND',
+
+  // Server errors
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;
