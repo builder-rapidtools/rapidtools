@@ -2,6 +2,11 @@ name = "eea-tool"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
+# Custom domain
+routes = [
+  { pattern = "eea-api.rapidtools.dev", custom_domain = true }
+]
+
 # KV namespace for attestation storage and idempotency
 [[kv_namespaces]]
 binding = "EEA_KV"
