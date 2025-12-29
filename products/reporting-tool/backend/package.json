@@ -19,15 +19,16 @@
   "license": "MIT",
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20231025.0",
-    "@types/node": "^20.10.0",
-    "typescript": "^5.3.3",
+    "@types/node": "^20.19.27",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3",
     "vitest": "^1.0.4",
     "wrangler": "^3.19.0"
   },
   "dependencies": {
-    "hono": "^3.11.7",
-    "uuid": "^9.0.1",
     "@types/uuid": "^9.0.7",
-    "pdf-lib": "^1.17.1"
+    "hono": "^3.11.7",
+    "pdf-lib": "^1.17.1",
+    "uuid": "^9.0.1"
   }
 }
