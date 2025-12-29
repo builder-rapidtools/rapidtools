@@ -7,6 +7,9 @@ import { Env, UploadGA4CsvResponse, GA4CsvRow, ReportMetrics } from '../types';
 import { Storage } from '../storage';
 import { requireAgencyAuth, requireActiveSubscription } from '../auth';
 
+// Maximum CSV upload size: 5MB (documented limit)
+const MAX_CSV_SIZE_BYTES = 5 * 1024 * 1024;
+
 /**
  * POST /api/client/:id/ga4-csv
  * Upload GA4 CSV data for a client
@@ -15,6 +18,18 @@ export async function handleUploadGA4Csv(c: Context<{ Bindings: Env }>): Promise
   const storage = new Storage(c.env.REPORTING_KV, c.env.REPORTING_R2);
 
   try {
+    // SECURITY: Check content-length before reading body (fail fast)
+    const contentLength = c.req.header('content-length');
+    if (contentLength) {
+      const size = parseInt(contentLength, 10);
+      if (size > MAX_CSV_SIZE_BYTES) {
+        return c.json({
+          success: false,
+          error: `CSV file too large. Maximum size is 5MB, received ${Math.round(size / 1024 / 1024 * 100) / 100}MB`,
+        }, 413);
+      }
+    }
+
     // Require authentication and active subscription
     const { agency } = await requireAgencyAuth(c.req.raw, c.env);
     requireActiveSubscription(agency);
@@ -46,6 +61,15 @@ export async function handleUploadGA4Csv(c: Context<{ Bindings: Env }>): Promise
 
     // Get CSV content from request body
     const csvContent = await c.req.text();
+
+    // SECURITY: Verify actual body size (content-length can be spoofed)
+    const actualSize = new TextEncoder().encode(csvContent).length;
+    if (actualSize > MAX_CSV_SIZE_BYTES) {
+      return c.json({
+        success: false,
+        error: `CSV file too large. Maximum size is 5MB, received ${Math.round(actualSize / 1024 / 1024 * 100) / 100}MB`,
+      }, 413);
+    }
 
     if (!csvContent || csvContent.trim().length === 0) {
       const response: UploadGA4CsvResponse = {

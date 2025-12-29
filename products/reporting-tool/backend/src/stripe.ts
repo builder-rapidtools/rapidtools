@@ -84,36 +84,34 @@ export async function createCheckoutSessionForAgency(
 
 /**
  * Handle Stripe webhook events
+ *
+ * SECURITY: Always verifies signature. No dev-mode bypass.
  */
 export async function handleStripeWebhook(
   env: Env,
   request: Request
 ): Promise<{ success: boolean; message?: string; error?: string }> {
-  // Dev mode: No webhook secret configured
+  // SECURITY: Webhook secret is REQUIRED. Fail closed if not configured.
   if (!env.STRIPE_WEBHOOK_SECRET) {
-    const body = await request.text();
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('🔔 STRIPE WEBHOOK (DEV MODE - NOT PROCESSED)');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-    console.log('Webhook body:', body.substring(0, 200) + '...');
-    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
-
+    console.error('STRIPE_WEBHOOK_SECRET not configured - rejecting webhook');
     return {
-      success: true,
-      message: 'Webhook received in dev mode (not processed)',
+      success: false,
+      error: 'Webhook processing not configured',
     };
   }
 
-  // Production mode: Verify signature and process event
   try {
     const body = await request.text();
     const signature = request.headers.get('stripe-signature');
 
     if (!signature) {
-      throw new Error('Missing stripe-signature header');
+      return {
+        success: false,
+        error: 'Missing stripe-signature header',
+      };
     }
 
-    // Verify webhook signature
+    // Verify webhook signature (cryptographic verification)
     const event = await verifyStripeSignature(body, signature, env.STRIPE_WEBHOOK_SECRET);
 
     // Process event
@@ -133,23 +131,88 @@ export async function handleStripeWebhook(
 }
 
 /**
- * Verify Stripe webhook signature
- * Simplified implementation - in production, use Stripe's official verification
+ * Verify Stripe webhook signature using HMAC-SHA256
+ *
+ * Stripe signature format: t=timestamp,v1=signature
+ * Expected signature: HMAC-SHA256(timestamp.payload, secret)
+ *
+ * SECURITY: Implements cryptographic verification with replay protection.
  */
 async function verifyStripeSignature(
   body: string,
   signature: string,
   secret: string
 ): Promise<any> {
-  // For MVP, we parse the JSON directly
-  // In production, implement proper HMAC verification
-  // See: https://stripe.com/docs/webhooks/signatures
+  // Parse signature header: t=timestamp,v1=sig1,v1=sig2,...
+  const elements = signature.split(',');
+  const timestampElement = elements.find(e => e.startsWith('t='));
+  const signatureElements = elements.filter(e => e.startsWith('v1='));
 
+  if (!timestampElement) {
+    throw new Error('Invalid signature: missing timestamp');
+  }
+
+  if (signatureElements.length === 0) {
+    throw new Error('Invalid signature: missing v1 signature');
+  }
+
+  const timestamp = timestampElement.substring(2);
+  const signatures = signatureElements.map(e => e.substring(3));
+
+  // Replay attack protection: reject if timestamp is too old (5 minutes)
+  const timestampSeconds = parseInt(timestamp, 10);
+  const currentSeconds = Math.floor(Date.now() / 1000);
+  const tolerance = 300; // 5 minutes
+
+  if (isNaN(timestampSeconds) || Math.abs(currentSeconds - timestampSeconds) > tolerance) {
+    throw new Error('Invalid signature: timestamp outside tolerance window');
+  }
+
+  // Compute expected signature: HMAC-SHA256(timestamp.payload, secret)
+  const signedPayload = `${timestamp}.${body}`;
+
+  const encoder = new TextEncoder();
+  const key = await crypto.subtle.importKey(
+    'raw',
+    encoder.encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' },
+    false,
+    ['sign']
+  );
+
+  const signatureBytes = await crypto.subtle.sign(
+    'HMAC',
+    key,
+    encoder.encode(signedPayload)
+  );
+
+  // Convert to hex string
+  const expectedSignature = Array.from(new Uint8Array(signatureBytes))
+    .map(b => b.toString(16).padStart(2, '0'))
+    .join('');
+
+  // Constant-time comparison to prevent timing attacks
+  const signatureValid = signatures.some(sig => {
+    if (sig.length !== expectedSignature.length) {
+      return false;
+    }
+    let result = 0;
+    for (let i = 0; i < sig.length; i++) {
+      result |= sig.charCodeAt(i) ^ expectedSignature.charCodeAt(i);
+    }
+    return result === 0;
+  });
+
+  if (!signatureValid) {
+    throw new Error('Invalid signature: verification failed');
+  }
+
+  // Signature valid - parse and return event
   try {
     const event = JSON.parse(body);
     return event;
   } catch (error) {
-    throw new Error('Invalid webhook payload');
+    throw new Error('Invalid webhook payload: malformed JSON');
   }
 }
 
@@ -191,11 +254,24 @@ async function processStripeEvent(env: Env, event: any): Promise<void> {
       const subscription = event.data.object;
       const customerId = subscription.customer;
 
-      // Find agency by Stripe customer ID
-      // Note: This requires a lookup function - for MVP, we'll skip this
-      // In production, implement: getAgencyByStripeCustomerId()
-
-      console.log(`Subscription ${subscription.id} ${event.type}`);
+      // Find agency by Stripe customer ID and update status based on subscription
+      const agencyForUpdate = await storage.getAgencyByStripeCustomerId(customerId);
+      if (agencyForUpdate) {
+        // Map Stripe subscription status to our status
+        const stripeStatus = subscription.status;
+        if (stripeStatus === 'active' || stripeStatus === 'trialing') {
+          agencyForUpdate.subscriptionStatus = 'active';
+        } else if (stripeStatus === 'past_due') {
+          agencyForUpdate.subscriptionStatus = 'past_due';
+        } else if (stripeStatus === 'canceled' || stripeStatus === 'unpaid') {
+          agencyForUpdate.subscriptionStatus = 'canceled';
+        }
+        agencyForUpdate.stripeSubscriptionId = subscription.id;
+        await storage.updateAgency(agencyForUpdate);
+        console.log(`Agency ${agencyForUpdate.id} subscription updated: ${agencyForUpdate.subscriptionStatus}`);
+      } else {
+        console.log(`No agency found for Stripe customer ${customerId}`);
+      }
       break;
     }
 
@@ -203,8 +279,15 @@ async function processStripeEvent(env: Env, event: any): Promise<void> {
       const subscription = event.data.object;
       const customerId = subscription.customer;
 
-      // Find agency and mark as canceled
-      console.log(`Subscription ${subscription.id} deleted`);
+      // SECURITY: Immediately revoke access on subscription cancellation
+      const agencyToCancel = await storage.getAgencyByStripeCustomerId(customerId);
+      if (agencyToCancel) {
+        agencyToCancel.subscriptionStatus = 'canceled';
+        await storage.updateAgency(agencyToCancel);
+        console.log(`Agency ${agencyToCancel.id} access REVOKED - subscription deleted`);
+      } else {
+        console.error(`CRITICAL: Subscription deleted but no agency found for customer ${customerId}`);
+      }
       break;
     }
 

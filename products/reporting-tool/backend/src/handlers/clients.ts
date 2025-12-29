@@ -8,6 +8,10 @@ import { Env, Client, CreateClientRequest, CreateClientResponse, ListClientsResp
 import { Storage } from '../storage';
 import { requireAgencyAuth, requireActiveSubscription } from '../auth';
 
+// Default client limit (Starter plan documented limit)
+// Pro plan would have unlimited, but not implemented yet
+const DEFAULT_MAX_CLIENTS = 5;
+
 /**
  * POST /api/client
  * Create or update a client
@@ -19,6 +23,15 @@ export async function handleCreateClient(c: Context<{ Bindings: Env }>): Promise
     // Require authentication and active subscription
     const { agency } = await requireAgencyAuth(c.req.raw, c.env);
     requireActiveSubscription(agency);
+
+    // SECURITY: Enforce client count limit (documented: 5 for Starter)
+    const existingClients = await storage.listClients(agency.id);
+    if (existingClients.length >= DEFAULT_MAX_CLIENTS) {
+      return c.json({
+        success: false,
+        error: `Client limit reached. Maximum ${DEFAULT_MAX_CLIENTS} clients allowed. Delete a client or upgrade your plan.`,
+      }, 403);
+    }
 
     const body = await c.req.json<CreateClientRequest>();
 

@@ -13,6 +13,8 @@ export interface AuthContext {
 /**
  * Require agency authentication via x-api-key header
  * Returns authenticated agency or throws 401 error
+ *
+ * SECURITY: No dev-mode bypass. All environments require valid API key.
  */
 export async function requireAgencyAuth(
   request: Request,
@@ -20,18 +22,9 @@ export async function requireAgencyAuth(
 ): Promise<AuthContext> {
   const storage = new Storage(env.REPORTING_KV, env.REPORTING_R2);
 
-  // Dev mode backdoor: If REPORTING_ENV is 'dev' and no API key provided,
-  // use a special dev agency
   const apiKey = request.headers.get('x-api-key');
 
   if (!apiKey) {
-    // Check if dev mode backdoor is enabled
-    if (env.REPORTING_ENV === 'dev') {
-      // Return or create dev agency
-      const devAgency = await getOrCreateDevAgency(storage);
-      return { agency: devAgency };
-    }
-
     throw new AuthError('Missing x-api-key header', 401);
   }
 
@@ -46,40 +39,34 @@ export async function requireAgencyAuth(
 }
 
 /**
- * Get or create the special dev-mode agency
- * This should NEVER be used in production
- */
-async function getOrCreateDevAgency(storage: Storage): Promise<Agency> {
-  const devAgencyId = 'dev-agency';
-
-  let devAgency = await storage.getAgency(devAgencyId);
-
-  if (!devAgency) {
-    // Create dev agency with known ID
-    devAgency = {
-      id: devAgencyId,
-      name: 'Dev Agency',
-      billingEmail: 'dev@localhost',
-      apiKey: 'dev-api-key',
-      subscriptionStatus: 'active',
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-
-    await storage.saveAgency(devAgency);
-  }
-
-  return devAgency;
-}
-
-/**
  * Check if agency subscription is active
- * Throws 402 Payment Required if subscription is inactive
+ * Throws 402 Payment Required if subscription is inactive or trial expired
+ *
+ * SECURITY: Enforces trial expiration. Expired trial == canceled.
  */
 export function requireActiveSubscription(agency: Agency): void {
-  const activeStatuses: Agency['subscriptionStatus'][] = ['trial', 'active'];
+  // Check if trial has expired
+  if (agency.subscriptionStatus === 'trial') {
+    if (agency.trialEndsAt) {
+      const trialEndDate = new Date(agency.trialEndsAt);
+      const now = new Date();
+      if (now > trialEndDate) {
+        throw new AuthError(
+          'Trial period has expired. Please subscribe to continue.',
+          402,
+          {
+            subscriptionStatus: 'trial_expired',
+            trialEndsAt: agency.trialEndsAt,
+          }
+        );
+      }
+    }
+    // Trial is valid - allow access
+    return;
+  }
 
-  if (!activeStatuses.includes(agency.subscriptionStatus)) {
+  // For non-trial, only 'active' is allowed
+  if (agency.subscriptionStatus !== 'active') {
     throw new AuthError(
       `Subscription inactive. Status: ${agency.subscriptionStatus}`,
       402,

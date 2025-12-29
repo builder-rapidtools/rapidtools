@@ -17,7 +17,7 @@ export interface SendReportEmailParams {
   to: string;
   subject: string;
   htmlSummary: string;
-  pdfKey?: string;
+  pdfSignedUrl?: string; // Time-limited signed URL for PDF download
 }
 
 /**
@@ -28,11 +28,10 @@ export async function sendReportEmail(
   env: Env,
   params: SendReportEmailParams
 ): Promise<EmailSendResult> {
-  const { to, subject, htmlSummary, pdfKey } = params;
+  const { to, subject, htmlSummary, pdfSignedUrl } = params;
 
   const apiKey = env.EMAIL_PROVIDER_API_KEY;
   const fromAddress = env.EMAIL_FROM_ADDRESS || 'reports@rapidtools.io';
-  const baseUrl = env.BASE_URL || 'https://app.rapidtools.io';
 
   // Dev mode: No provider configured
   if (!apiKey) {
@@ -42,7 +41,7 @@ export async function sendReportEmail(
     console.log(`To: ${to}`);
     console.log(`From: ${fromAddress}`);
     console.log(`Subject: ${subject}`);
-    console.log(`PDF Key: ${pdfKey || 'N/A'}`);
+    console.log(`PDF URL: ${pdfSignedUrl || 'N/A'}`);
     console.log('-------------------------------------------');
     console.log('HTML Summary:');
     console.log(htmlSummary);
@@ -62,7 +61,7 @@ export async function sendReportEmail(
       from: fromAddress,
       subject,
       htmlBody: htmlSummary,
-      pdfKey,
+      pdfSignedUrl,
     });
 
     return result;
@@ -86,27 +85,25 @@ async function sendViaResend(
     from: string;
     subject: string;
     htmlBody: string;
-    pdfKey?: string;
+    pdfSignedUrl?: string;
   }
 ): Promise<EmailSendResult> {
-  const { to, from, subject, htmlBody, pdfKey } = params;
-
-  // TODO: If pdfKey is provided, fetch PDF from R2 and attach
-  // For MVP Phase 2, we'll include a link to the PDF instead of attaching it
+  const { to, from, subject, htmlBody, pdfSignedUrl } = params;
 
   let html = htmlBody;
 
-  // If PDF exists, add download link
-  if (pdfKey) {
-    const baseUrl = env.BASE_URL || 'https://app.rapidtools.io';
-    const pdfUrl = `${baseUrl}/reports/${pdfKey}`;
+  // If signed URL is provided, add download link (URL is time-limited and verified)
+  if (pdfSignedUrl) {
     html += `
       <br><br>
       <div style="margin-top: 20px; padding: 15px; background: #f5f5f5; border-radius: 5px;">
         <p style="margin: 0 0 10px 0; font-weight: bold;">📊 View Full Report</p>
-        <a href="${pdfUrl}" style="display: inline-block; padding: 10px 20px; background: #3b82f6; color: white; text-decoration: none; border-radius: 5px;">
+        <a href="${pdfSignedUrl}" style="display: inline-block; padding: 10px 20px; background: #3b82f6; color: white; text-decoration: none; border-radius: 5px;">
           Download PDF Report
         </a>
+        <p style="margin: 10px 0 0 0; font-size: 12px; color: #666;">
+          This link expires in 7 days.
+        </p>
       </div>
     `;
   }

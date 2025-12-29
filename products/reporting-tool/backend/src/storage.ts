@@ -40,6 +40,18 @@ export class Storage {
     return this.getAgency(agencyId);
   }
 
+  async getAgencyByStripeCustomerId(stripeCustomerId: string): Promise<Agency | null> {
+    // Lookup agency ID by Stripe customer ID
+    const lookupKey = `agency_stripe_customer:${stripeCustomerId}`;
+    const agencyId = await this.kv.get(lookupKey, 'text');
+
+    if (!agencyId) {
+      return null;
+    }
+
+    return this.getAgency(agencyId);
+  }
+
   async saveAgency(agency: Agency): Promise<void> {
     const agencyKey = `agency:${agency.id}`;
     const apiKeyLookupKey = `agency_api_key:${agency.apiKey}`;
@@ -49,10 +61,20 @@ export class Storage {
 
     // Store API key lookup (apiKey → agencyId)
     await this.kv.put(apiKeyLookupKey, agency.id);
+
+    // Store Stripe customer ID lookup if present (stripeCustomerId → agencyId)
+    if (agency.stripeCustomerId) {
+      const stripeCustomerLookupKey = `agency_stripe_customer:${agency.stripeCustomerId}`;
+      await this.kv.put(stripeCustomerLookupKey, agency.id);
+    }
   }
 
   async createAgency(name: string, billingEmail: string): Promise<Agency> {
     const { v4: uuidv4 } = await import('uuid');
+
+    // Trial expires in 14 days
+    const trialEndDate = new Date();
+    trialEndDate.setDate(trialEndDate.getDate() + 14);
 
     const agency: Agency = {
       id: uuidv4(),
@@ -60,6 +82,7 @@ export class Storage {
       billingEmail,
       apiKey: uuidv4(), // Generate secure API key
       subscriptionStatus: 'trial',
+      trialEndsAt: trialEndDate.toISOString(),
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
