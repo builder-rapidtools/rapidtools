@@ -1,61 +1,94 @@
 # EEA (Economic Event Attestation)
 
-Deterministic attestation microservice for economic events. Creates immutable, cryptographically verifiable records of financial events.
-
 **Version:** 1.1.0
 **Endpoint:** `https://eea-api.rapidtools.dev`
 
-## What It Does
+Deterministic attestation service for economic events. Creates cryptographically-signed records of financial events with tamper-evident properties.
 
-EEA accepts economic events (payments, refunds, invoices, etc.) and produces:
-- A **canonical representation** of the event (deterministic JSON)
-- A **SHA-256 hash** of the canonical form
-- An **HMAC signature** for tamper-evidence
-- An **attestation record** stored in KV with a unique ULID
-- **Idempotent behavior**: submitting the same event twice returns the same attestation
+## What it does
 
-## Guarantees
+- Accepts economic event data (payments, refunds, invoices, transfers)
+- Produces deterministic canonical representation (stable JSON)
+- Computes SHA-256 hash of canonical form
+- Generates HMAC signature for tamper-evidence
+- Stores attestation record with unique ULID identifier
+- Returns idempotent results (same input → same attestation)
 
-1. **Determinism**: Same input always produces the same hash
-2. **Immutability**: Attestation records cannot be modified after creation
-3. **Idempotency**: Duplicate submissions return the existing attestation
-4. **Auditability**: Every attestation is traceable via its ID or hash
-5. **Tamper-evidence**: HMAC signature detects any modification to the record
-6. **No side effects**: No outbound calls, no external dependencies
+## What it doesn't do
 
-## Non-Guarantees
+- Does not verify that events actually occurred
+- Does not validate data correctness or business logic
+- Does not initiate transactions or hold funds
+- Does not perform identity verification
+- Does not provide permanent archival (records expire after retention period)
+- Does not connect to external systems or make outbound calls
+- Does not offer fraud detection or risk scoring
 
-- **Truth verification**: EEA does not verify that events actually occurred
-- **Data correctness**: EEA preserves what was submitted, not what is true
-- **Permanent storage**: Records expire after retention period (default 30 days)
-- **Identity verification**: API keys are access control, not identity
+## Links
 
-## What It Does NOT Do
+- **Service endpoint**: https://eea-api.rapidtools.dev
+- **Health check**: https://eea-api.rapidtools.dev/health
+- **Documentation**: https://github.com/jamesedwards/rapidtools
 
-- ❌ Fraud detection or scoring
-- ❌ Recommendations or judgement logic
-- ❌ Outbound API calls
-- ❌ Data export or search
-- ❌ File storage (R2)
-- ❌ Dashboards or UI
-- ❌ Transaction initiation or fund holding
-- ❌ Account reconciliation
+## Service Contract
 
-## Regulatory Posture
+**What EEA guarantees:**
+- Determinism: Same input always produces the same hash
+- Idempotency: Duplicate submissions return the existing attestation
+- Tamper-evidence: HMAC signature detects modification to the record
+- Auditability: Every attestation is traceable via ID or hash
+- No side effects: No outbound calls, no external dependencies
+
+**What EEA does NOT guarantee:**
+- Truth verification: EEA does not verify events actually occurred
+- Data correctness: EEA preserves what was submitted, not what is true
+- Permanent storage: Records expire after retention period (default 30 days)
+- Identity verification: API keys provide access control, not identity
+
+## Safety & Compliance Posture
 
 Economic Event Attestation (EEA) is a post-event evidence service. It records caller-supplied economic event data after an action has completed, normalises it deterministically, computes a cryptographic fingerprint, and returns an immutable attestation record with a timestamp and schema version. EEA does not initiate transactions, hold funds, identify users, reconcile accounts, evaluate legitimacy, or make decisions. It does not verify truth or correctness of the event; it preserves what was observed and submitted at a given time. EEA functions solely as audit-grade evidence infrastructure, providing reproducible, idempotent records suitable for compliance, reporting, and dispute resolution.
 
-## API Endpoints
+## API Reference
 
-### `POST /attest`
+**Base URL**: `https://eea-api.rapidtools.dev`
+
+**Authentication**: API key via `x-api-key` header (required for all endpoints except `/health`)
+
+**Rate limits**:
+- Free tier: 20 requests/minute
+- Standard tier: 60 requests/minute
+- Enterprise tier: 300 requests/minute
+
+**Payload limits**:
+- Max request body: 128KB
+- Max `payload` field: 64KB
+
+### Endpoints
+
+#### `GET /health`
+
+Service health check (no authentication required).
+
+**Response (200 OK):**
+```json
+{
+  "ok": true,
+  "service": "eea-tool",
+  "version": "1.1.0",
+  "timestamp": "2024-12-27T10:30:00Z"
+}
+```
+
+#### `POST /attest`
 
 Create an attestation for an economic event.
 
 **Headers:**
 - `Content-Type: application/json`
-- `x-api-key: <your-api-key>` (required)
+- `x-api-key: <your-api-key>`
 
-**Request Body:**
+**Request body:**
 ```json
 {
   "event_type": "payment",
@@ -67,27 +100,27 @@ Create an attestation for an economic event.
     "stripe_payment_id": "pi_abc123",
     "order_id": "ORD-001"
   },
-  "payload": { },
-  "evidence": { },
-  "meta": { }
+  "payload": {},
+  "evidence": {},
+  "meta": {}
 }
 ```
 
-**Required Fields:**
+**Required fields:**
 | Field | Type | Description |
 |-------|------|-------------|
 | `event_type` | string | One of: `payment`, `refund`, `invoice_issued`, `transfer`, `credit_spend`, `payout`, `adjustment` |
 | `occurred_at` | string | ISO-8601 timestamp |
 | `amount` | string | Monetary amount as string (e.g., `"100.00"`) |
-| `currency` | string | 3-letter uppercase code (e.g., `"USD"`) |
+| `currency` | string | 3-letter uppercase code (e.g., `"USD"`, `"GBP"`) |
 | `source_system` | string | Identifier of originating system |
 | `references` | object | Freeform object with reference IDs |
 
-**Optional Fields:**
+**Optional fields:**
 | Field | Type | Max Size | Description |
 |-------|------|----------|-------------|
 | `payload` | object | 64KB | Raw provider payload |
-| `evidence` | object | - | Links/IDs for evidence |
+| `evidence` | object | - | Links/IDs for evidence artifacts |
 | `meta` | object | - | Caller metadata |
 
 **Response (201 Created):**
@@ -102,7 +135,7 @@ Create an attestation for an economic event.
 }
 ```
 
-**Idempotent Response (200 OK):**
+**Idempotent response (200 OK):**
 ```json
 {
   "ok": true,
@@ -115,12 +148,12 @@ Create an attestation for an economic event.
 }
 ```
 
-### `GET /attest/:attestation_id`
+#### `GET /attest/:attestation_id`
 
-Fetch an existing attestation by ID.
+Retrieve an existing attestation by ID.
 
 **Headers:**
-- `x-api-key: <your-api-key>` (required)
+- `x-api-key: <your-api-key>`
 
 **Response (200 OK):**
 ```json
@@ -137,64 +170,7 @@ Fetch an existing attestation by ID.
 }
 ```
 
-### `GET /health`
-
-Health check endpoint (no authentication required).
-
-**Response:**
-```json
-{
-  "ok": true,
-  "service": "eea-tool",
-  "version": "1.1.0",
-  "timestamp": "2024-12-27T10:30:00Z"
-}
-```
-
-## Limits
-
-| Limit | Value | Description |
-|-------|-------|-------------|
-| Request body | 128KB | Maximum size of entire request |
-| `payload` field | 64KB | Maximum size when stringified |
-| Rate limit (free) | 20/min | Requests per minute |
-| Rate limit (standard) | 60/min | Requests per minute |
-| Rate limit (enterprise) | 300/min | Requests per minute |
-
-## Retention Policy
-
-Attestation records are stored with a TTL (time-to-live) and automatically expire.
-
-- **Default retention**: 30 days
-- **Configurable via**: `EEA_RETENTION_DAYS` environment variable
-- **Behavior**: After expiration, records are no longer retrievable
-
-This means:
-- EEA is not permanent archival storage
-- Export records before expiration if long-term retention is needed
-- Expired records cannot be recovered
-
-## Signature Meaning
-
-The `attestation_sig` field provides **tamper-evidence**, not proof of truth.
-
-**What it proves:**
-- The record has not been modified since attestation
-- The attestation was created by a system holding the signing key
-- The fields (`attestation_id`, `event_hash`, `attested_at`) are authentic
-
-**What it does NOT prove:**
-- That the event actually occurred
-- That the submitted data was accurate
-- That the caller was authorized to submit the event
-
-**Signature format:**
-```
-sig_payload = "eea.v1|{attestation_id}|{event_hash}|{attested_at}"
-attestation_sig = "hmacsha256:" + hex(HMAC-SHA256(signing_key, sig_payload))
-```
-
-## Error Format
+### Error Format
 
 All errors return a consistent JSON structure:
 
@@ -209,7 +185,7 @@ All errors return a consistent JSON structure:
 }
 ```
 
-**Error Codes:**
+**Error codes:**
 | Code | HTTP Status | Description |
 |------|-------------|-------------|
 | `UNAUTHORIZED` | 401 | Missing or invalid API key |
@@ -222,22 +198,72 @@ All errors return a consistent JSON structure:
 | `NOT_FOUND` | 404 | Attestation not found |
 | `INTERNAL_ERROR` | 500 | Unexpected server error |
 
-## Response Headers
+### Response Headers
 
 All responses include:
 - `x-request-id`: Unique request identifier for tracing
 - `Access-Control-Allow-Origin: *`: CORS support
 
-Rate-limited responses also include:
+Rate-limited responses include:
 - `Retry-After: 60`
 - `X-RateLimit-Limit: <limit>`
 - `X-RateLimit-Remaining: 0`
 
-## API Key Management
+## Operational Semantics
 
-API keys are stored as SHA-256 hashes in KV. Raw keys are never stored.
+### Idempotency
 
-### Provisioning a New Key (Admin Only)
+EEA implements content-based idempotency:
+
+1. Client submits event data to `POST /attest`
+2. EEA canonicalizes the event (deterministic key sorting, undefined removal)
+3. EEA computes `event_hash = sha256(canonical_event)`
+4. EEA checks KV for existing attestation with this hash
+5. If found: returns existing attestation with `idempotent: true` flag (200 OK)
+6. If not found: creates new attestation, stores in KV, returns receipt (201 Created)
+
+**Key property**: Submitting identical event data always returns the same `attestation_id` and `event_hash`, regardless of how many times you submit.
+
+**Retention**: Attestation records are stored with TTL (default 30 days) and automatically expire. After expiration, the same event data will create a new attestation.
+
+### Canonicalization
+
+Event canonicalization ensures deterministic hashing:
+
+1. Remove `undefined` and `null` values
+2. Sort object keys alphabetically (recursive)
+3. Serialize to JSON with no whitespace
+4. Compute SHA-256 hash of result
+
+This ensures `{"b": 2, "a": 1}` and `{"a": 1, "b": 2}` produce identical hashes.
+
+### Signatures
+
+The `attestation_sig` field provides tamper-evidence via HMAC-SHA256.
+
+**Signature payload:**
+```
+sig_payload = "eea.v1|{attestation_id}|{event_hash}|{attested_at}"
+attestation_sig = "hmacsha256:" + hex(HMAC-SHA256(signing_key, sig_payload))
+```
+
+**What the signature proves:**
+- The record has not been modified since attestation
+- The attestation was created by a system holding the signing key
+- The fields (`attestation_id`, `event_hash`, `attested_at`) are authentic
+
+**What the signature does NOT prove:**
+- That the event actually occurred
+- That the submitted data was accurate
+- That the caller was authorized to submit the event
+
+The signature is for tamper-evidence, not for proof of truth.
+
+## Key Management
+
+API keys are stored as SHA-256 hashes in Cloudflare KV. Raw keys are never stored.
+
+### Provisioning a new key (admin only)
 
 1. Generate a key using the admin script:
 ```bash
@@ -261,7 +287,8 @@ npx wrangler kv:key put --namespace-id=<KV_ID> \
   '{"key_id":"...","status":"active","plan":"...","created_at":"...","rate_limit_per_min":60}'
 ```
 
-### Key Entry Format
+### Key entry format
+
 ```json
 {
   "key_id": "client_acme",
@@ -273,51 +300,30 @@ npx wrangler kv:key put --namespace-id=<KV_ID> \
 }
 ```
 
-### Disabling a Key
+### Disabling a key
 
-Update the entry in KV with `"status": "disabled"`.
+Update the KV entry with `"status": "disabled"`. The key will immediately stop working.
 
-## Local Development
+### Key rotation
 
-### Prerequisites
-- Node.js 18+
-- Wrangler CLI
+1. Provision a new key for the client
+2. Provide the new key to the client
+3. After client migrates, disable the old key
 
-### Setup
+## Examples
+
+### Health check
 
 ```bash
-cd ~/ai-stack/rapidtools/products/eea-tool
-npm install
+curl https://eea-api.rapidtools.dev/health
 ```
 
-### Create `.dev.vars`
+### Create attestation
 
 ```bash
-cat > .dev.vars << 'EOF'
-EEA_API_KEY=dev-test-key-12345
-EEA_SIGNING_KEY=dev-signing-secret-do-not-use-in-prod
-EEA_RETENTION_DAYS=30
-EOF
-```
-
-### Run Locally
-
-```bash
-npm run dev
-```
-
-Worker will start at `http://localhost:8787`
-
-### Test Commands
-
-```bash
-# Health check
-curl http://localhost:8787/health
-
-# Create attestation
-curl -X POST http://localhost:8787/attest \
+curl -X POST https://eea-api.rapidtools.dev/attest \
   -H "Content-Type: application/json" \
-  -H "x-api-key: dev-test-key-12345" \
+  -H "x-api-key: your-api-key" \
   -d '{
     "event_type": "payment",
     "occurred_at": "2024-12-27T10:30:00Z",
@@ -326,120 +332,51 @@ curl -X POST http://localhost:8787/attest \
     "source_system": "stripe",
     "references": {"order_id": "ORD-001"}
   }'
-
-# Fetch attestation
-curl http://localhost:8787/attest/<attestation_id> \
-  -H "x-api-key: dev-test-key-12345"
 ```
 
-## Deployment
-
-### 1. Create KV Namespace (if not exists)
+### Fetch attestation
 
 ```bash
-npx wrangler kv namespace create EEA_KV
+curl https://eea-api.rapidtools.dev/attest/<attestation_id> \
+  -H "x-api-key: your-api-key"
 ```
 
-Update `wrangler.toml` with the namespace ID.
+### Verify signature (example in Node.js)
 
-### 2. Set Production Secrets
+```javascript
+const crypto = require('crypto');
 
-```bash
-# Signing key (generate a secure random value)
-openssl rand -base64 32 | npx wrangler secret put EEA_SIGNING_KEY
+function verifySignature(record, signingKey) {
+  const payload = `eea.v1|${record.attestation_id}|${record.event_hash}|${record.attested_at}`;
+  const expectedSig = crypto
+    .createHmac('sha256', signingKey)
+    .update(payload)
+    .digest('hex');
 
-# Legacy API key (for migration, optional)
-npx wrangler secret put EEA_API_KEY
-
-# Retention days (optional, default 30)
-echo "30" | npx wrangler secret put EEA_RETENTION_DAYS
+  const actualSig = record.attestation_sig.replace('hmacsha256:', '');
+  return actualSig === expectedSig;
+}
 ```
 
-### 3. Register API Keys
+## Data Handling
 
-Use `./tools/generate-api-key.sh` to create keys and register them in KV.
+- **Storage**: Cloudflare KV (attestation records only)
+- **Retention**: Default 30 days (configurable via `EEA_RETENTION_DAYS`)
+- **Behavior after expiration**: Records are no longer retrievable
+- **Training use**: No
+- **Export requirement**: Export records before expiration if long-term retention is needed
 
-### 4. Deploy
+## Provider
 
-```bash
-npm run deploy
-```
-
-## Architecture
-
-```
-POST /attest
-    │
-    ▼
-┌─────────────┐
-│   Auth      │──▶ 401 if invalid key
-│ (KV lookup) │
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Rate Limit  │──▶ 429 if exceeded
-│ (KV counter)│
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Size Check  │──▶ 413 if too large
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Parse JSON  │──▶ 400 if invalid
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│  Validate   │──▶ 400 if schema error
-│   Schema    │
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│ Canonicalize│  (sort keys, remove undefined)
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│   SHA-256   │──▶ event_hash
-└─────────────┘
-    │
-    ▼
-┌─────────────┐     ┌─────────────┐
-│ KV Lookup   │────▶│   Return    │  (idempotent)
-│ hash:xxx    │ yes │  existing   │
-└─────────────┘     └─────────────┘
-    │ no
-    ▼
-┌─────────────┐
-│ Generate    │──▶ eea_<ulid>
-│   ULID      │
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│    Sign     │──▶ attestation_sig
-│   (HMAC)    │
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│  Store KV   │  (with TTL)
-│ attestation │
-│    hash     │
-└─────────────┘
-    │
-    ▼
-┌─────────────┐
-│   Return    │
-│   Receipt   │
-└─────────────┘
-```
+RapidTools, United Kingdom
+Contact: eea@rapidtools.dev
 
 ## License
 
 MIT
+
+---
+
+## Changelog
+
+See [CHANGELOG.md](./CHANGELOG.md) for version history.
