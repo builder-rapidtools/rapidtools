@@ -28,7 +28,8 @@ Deterministic attestation service for economic events. Creates cryptographically
 
 - **Service endpoint**: https://eea-api.rapidtools.dev
 - **Health check**: https://eea-api.rapidtools.dev/health
-- **Documentation**: https://github.com/jamesedwards/rapidtools
+- **Documentation**: https://github.com/builder-rapidtools/rapidtools
+- **Development**: See [DEVELOPMENT.md](./DEVELOPMENT.md)
 
 ## Service Contract
 
@@ -49,6 +50,8 @@ Deterministic attestation service for economic events. Creates cryptographically
 
 Economic Event Attestation (EEA) is a post-event evidence service. It records caller-supplied economic event data after an action has completed, normalises it deterministically, computes a cryptographic fingerprint, and returns an immutable attestation record with a timestamp and schema version. EEA does not initiate transactions, hold funds, identify users, reconcile accounts, evaluate legitimacy, or make decisions. It does not verify truth or correctness of the event; it preserves what was observed and submitted at a given time. EEA functions solely as audit-grade evidence infrastructure, providing reproducible, idempotent records suitable for compliance, reporting, and dispute resolution.
 
+**Note on immutability**: Records are stored with a TTL (default 30 days). "Immutable" means non-modifiable while retained; expired records are not retrievable and the storage slot may be reclaimed.
+
 ## API Reference
 
 **Base URL**: `https://eea-api.rapidtools.dev`
@@ -56,9 +59,8 @@ Economic Event Attestation (EEA) is a post-event evidence service. It records ca
 **Authentication**: API key via `x-api-key` header (required for all endpoints except `/health`)
 
 **Rate limits**:
-- Free tier: 20 requests/minute
-- Standard tier: 60 requests/minute
-- Enterprise tier: 300 requests/minute
+- Default: 60 requests/minute per API key (configurable per key entry)
+- Rate limit is enforced per API key via the `rate_limit_per_min` field in the key entry
 
 **Payload limits**:
 - Max request body: 128KB
